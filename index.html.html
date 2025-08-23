@@ -39,7 +39,7 @@
           { zone: "Inner Lunda Norte", fee: 2500 },
           { zone: "Outras Províncias", fee: 5000 }
         ],
-        ADMIN_PIN: "2025" // PIN simples para abrir o painel admin
+        ADMIN_PIN: "Profecia24" // PIN simples para abrir o painel admin
       };
 
       const SAMPLE_PRODUCTS = [
@@ -117,6 +117,29 @@
         }
 
         // === ADMIN: criar/editar produtos e configuração, sem mexer em código ===
+        <div className="card p-3">
+  <div className="text-sm text-zinc-600 mb-2">Lista de produtos</div>
+  <div className="space-y-2 max-h-64 overflow-auto">
+    {products.map(p => (
+      <div key={p.id} className="flex items-center justify-between border rounded-2xl px-3 py-2">
+        <div>
+          <div className="font-medium">{p.name}</div>
+          <div className="text-xs text-zinc-500">ID: {p.id} • {currency(p.price)}</div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            className="btn"
+            onClick={() => setEditing(p)}
+          >✏️ Editar</button>
+          <button
+            className="btn text-rose-600 border-rose-200"
+            onClick={() => delProduct(p.id)}
+          >🗑️ Apagar</button>
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
         const emptyProduct = { id:"", name:"", price:0, category:"", stock:0, image:"", tags:"", desc:"", variants:[] };
         const [editing, setEditing] = useState(emptyProduct);
 
