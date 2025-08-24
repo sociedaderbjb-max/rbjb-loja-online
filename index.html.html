@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RB JB — Loja Online</title>
+    <!-- Tailwind (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root{ --accent:#2563eb }
+      [data-theme="dark"]{ color-scheme:dark }
+      .card{border-radius:1rem;border:1px solid #e5e7eb;background:rgba(255,255,255,.85);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+      .btn{padding:.625rem 1rem;border-radius:9999px;border:1px solid rgba(0,0,0,.06);box-shadow:0 1px 1px rgba(0,0,0,.04)}
+      .btn:active{transform:scale(.99)}
+      .btn-accent{background:var(--accent);color:#fff;border-color:transparent}
+      .chip{display:inline-flex;align-items:center;gap:.25rem;border-radius:999px;padding:.25rem .6rem;border:1px solid #e5e7eb;font-size:.75rem}
+      .backdrop{backdrop-filter:saturate(120%) blur(8px)}
+      .hero-gradient{background:radial-gradient(60% 120% at 20% 0%, rgba(37,99,235,.12), transparent 60%), radial-gradient(50% 140% at 80% -10%, rgba(16,185,129,.18), transparent 60%)}
+    </style>
+    <!-- React + ReactDOM + Babel (para rodar sem build) -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="min-h-screen bg-gradient-to-b from-zinc-50 to-white text-zinc-900" id="bodyRoot">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useEffect, useMemo, useState } = React;
+
+      const DEFAULT_CONFIG = {
+        BUSINESS_NAME: "Sociedade RB JB Comércio e Prestação de Serviços",
+        BRAND_SHORT: "RB JB",
+        WELCOME: "Seja Bem Vindo Loja RB JB",
+        VERSION: "v3.0",
+        LOCATION: "Dundo, Lunda Norte, Angola",
+        CURRENCY: "Kz",
+        WHATSAPP_NUMBER: "244923000000",
+        SUPPORT_EMAIL: "comercial@rbjb.co.ao",
+        BANK_DETAILS: { bank: "Banco XYZ", iban: "AO06 0000 0000 0000 0000 0000 0000", holder: "Sociedade RB JB" },
+        THEME_COLOR: "#2563eb",
+        THEME_MODE: "light",
+        LOGO: "",
+        ADMIN_PIN: "2025",
+        MANAGERS: [
+          { id:"m001", nome:"Administrador", telefone:"", pin:"2025", role:"admin" }
+        ]
+      };
+
+      const SAMPLE_PRODUCTS = [
+        { id:"p001", name:"Smartphone Android A15 128GB", price:145000, compareAt:165000, category:"Telefones", stock:12, image:"https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?q=80&w=1000&auto=format&fit=crop", tags:["4G","Dual SIM","Garantia 12m"], desc:"Tela 6.5\" • 4GB RAM • Câmera 50MP." },
+        { id:"p002", name:"TV LED 43\" 4K HDR", price:295000, compareAt:0, category:"Electrónica", stock:5, image:"https://images.unsplash.com/photo-1545235617-9465d2a55698?q=80&w=1200&auto=format&fit=crop", tags:["4K","HDR","USB/HDMI"], desc:"Imagem nítida e som envolvente." },
+        { id:"p003", name:"Serviço de Instalação de Antena", price:20000, compareAt:0, category:"Serviços", stock:999, image:"https://images.unsplash.com/photo-1581092921461-eab62e97a780?q=80&w=1200&auto=format&fit=crop", tags:["Doméstico","Profissional"], desc:"Instalação e alinhamento completos." }
+      ];
+
+      const currency = (n) => new Intl.NumberFormat("pt-AO", { style: "currency", currency: "AOA", maximumFractionDigits: 0 }).format(n);
+
+      const useLocalStorage = (key, initial) => {
+        const [state, setState] = useState(() => {
+          try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : initial; } catch { return initial; }
+        });
+        useEffect(() => { localStorage.setItem(key, JSON.stringify(state)); }, [key, state]);
+        return [state, setState];
+      };
+
+      function App(){
+        const [config, setConfig] = useLocalStorage("rbjb.config", DEFAULT_CONFIG);
+        const [products, setProducts] = useLocalStorage("rbjb.products", SAMPLE_PRODUCTS);
+        const [feedbacks, setFeedbacks] = useLocalStorage("rbjb.feedbacks", []);
+        const [adminOpen, setAdminOpen] = useState(false);
+        const [user, setUser] = useState(null); // gestor autenticado
+
+        // tema
+        useEffect(()=>{
+          document.documentElement.style.setProperty('--accent', config.THEME_COLOR);
+          document.body.setAttribute('data-theme', config.THEME_MODE==='dark' ? 'dark' : 'light');
+          document.body.className = `${config.THEME_MODE==='dark' ? 'bg-zinc-900 text-zinc-100' : 'bg-gradient-to-b from-zinc-50 to-white text-zinc-900'}`;
+        },[config.THEME_COLOR, config.THEME_MODE]);
+
+        // catálogo - categorias
+        const [search, setSearch] = useState("");
+        const [activeCat, setActiveCat] = useState("Todos");
+        const categories = useMemo(()=>['Todos', ...Array.from(new Set(products.map(p=>p.category)))], [products]);
+
+        const filtered = useMemo(()=>{
+          return products.filter(p => (activeCat==='Todos' || p.category===activeCat) && (p.name.toLowerCase().includes(search.toLowerCase()) || p.desc.toLowerCase().includes(search.toLowerCase())));
+        },[products, search, activeCat]);
+
+        // CRUD produtos
+        const upsertProduct = (p) => setProducts(prev => {
+          const idx = prev.findIndex(x => x.id===p.id);
+          if(idx>-1){ const next=[...prev]; next[idx]=p; return next; }
+          return [...prev, p];
+        });
+        const delProduct = (id) => setProducts(prev => prev.filter(p=>p.id!==id));
+
+        // gestores
+        const addManager = (m) => setConfig({...config, MANAGERS:[...config.MANAGERS, {...m, id:crypto.randomUUID()}]});
+        const delManager = (id) => setConfig({...config, MANAGERS: config.MANAGERS.filter(m=>m.id!==id)});
+
+        // login admin/gestor via PIN
+        const openAdmin = () => {
+          const pin = prompt("PIN do gestor ou administrador:");
+          const mgr = config.MANAGERS.find(m=>m.pin===pin) || (pin===config.ADMIN_PIN ? {nome:'Administrador', role:'admin'} : null);
+          if(mgr){ setUser(mgr); setAdminOpen(true); }
+          else alert("PIN inválido");
+        };
+
+        // feedback (opiniões & pedidos)
+        const addFeedback = (f) => setFeedbacks(prev=>[{...f, id:crypto.randomUUID(), date:new Date().toISOString()}, ...prev]);
+
+        return (
+          <div>
+            {/* Topbar */}
+            <header className="sticky top-0 z-40 backdrop bg-white/70 dark:bg-zinc-900/70 border-b border-zinc-200/70 dark:border-zinc-800/60 flex items-center gap-3 px-4 py-3">
+              <div className="flex items-center gap-3">
+                {config.LOGO ? <img src={config.LOGO} alt="logo" className="h-8 w-8 rounded-xl object-cover"/> : <div className="h-8 w-8 rounded-xl" style={{background:'var(--accent)'}}/>}
+                <div className="font-bold text-lg">{config.BUSINESS_NAME}</div>
+                <span className="chip text-zinc-600">{config.VERSION}</span>
+              </div>
+              <nav className="ml-auto hidden md:flex items-center gap-2">
+                {categories.map(cat=> (
+                  <button key={cat} onClick={()=>setActiveCat(cat)} className={`btn ${activeCat===cat? 'btn-accent' : ''}`}>{cat}</button>
+                ))}
+                <button className="btn" onClick={()=>document.getElementById('opiniao').scrollIntoView({behavior:'smooth'})}>Opiniões & Pedidos</button>
+                <button className="btn" onClick={openAdmin}>⚙️ Admin</button>
+              </nav>
+              <button className="ml-auto md:hidden btn" onClick={openAdmin}>⚙️</button>
+            </header>
+
+            {/* Hero */}
+            <section className="hero-gradient">
+              <div className="max-w-6xl mx-auto px-4 py-10 md:py-16">
+                <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight">
+                  {config.WELCOME}
+                </h1>
+                <p className="mt-2 text-zinc-600 dark:text-zinc-300 max-w-2xl">Vendemos de tudo e prestamos serviços. Qualidade, confiança e bom preço em {config.LOCATION}. Fale connosco pelo WhatsApp ou deixe seu pedido abaixo.</p>
+                <div className="mt-5 flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1">
+                    <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Pesquisar produtos ou serviços..." className="w-full border px-4 py-3 rounded-2xl outline-none focus:ring-2" style={{boxShadow:'0 1px 2px rgba(0,0,0,.06)', borderColor:'rgba(0,0,0,.08)'}}/>
+                  </div>
+                  <a className="btn btn-accent text-center" href={`https://wa.me/${config.WHATSAPP_NUMBER}`} target="_blank">Contactar WhatsApp</a>
+                </div>
+                {/* categorias (mobile) */}
+                <div className="mt-4 flex md:hidden gap-2 overflow-auto pb-2">
+                  {categories.map(cat=> (
+                    <button key={cat} onClick={()=>setActiveCat(cat)} className={`btn whitespace-nowrap ${activeCat===cat? 'btn-accent' : ''}`}>{cat}</button>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            {/* Grid de produtos */}
+            <main className="max-w-6xl mx-auto p-4 grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {filtered.map(p => (
+                <ProductCard key={p.id} p={p} />
+              ))}
+              {filtered.length===0 && (
+                <div className="col-span-full text-center text-zinc-600 py-20">Nenhum item encontrado. Tente outra pesquisa.</div>
+              )}
+            </main>
+
+            {/* Opiniões & Pedidos */}
+            <section id="opiniao" className="max-w-6xl mx-auto p-4 pb-16">
+              <div className="card p-6">
+                <h2 className="text-xl font-bold">Opiniões & Pedidos de Produtos</h2>
+                <p className="text-zinc-600">Se não encontrar na loja, descreva aqui o que precisa. Nós tratamos de comprar!</p>
+                <FeedbackForm onSubmit={addFeedback} />
+              </div>
+            </section>
+
+            {/* Rodapé */}
+            <footer className="border-t py-8 text-center text-sm text-zinc-600">
+              <div>{config.BRAND_SHORT} • {config.LOCATION}</div>
+              <div>Suporte: <a className="underline" href={`mailto:${config.SUPPORT_EMAIL}`}>{config.SUPPORT_EMAIL}</a></div>
+            </footer>
+
+            {adminOpen && (
+              <AdminModal onClose={()=>setAdminOpen(false)} user={user} config={config} setConfig={setConfig} products={products} setProducts={setProducts} upsertProduct={upsertProduct} delProduct={delProduct} feedbacks={feedbacks} addManager={addManager} delManager={delManager} />
+            )}
+          </div>
+        );
+      }
+
+      function ProductCard({p}){
+        return (
+          <div className="card overflow-hidden relative group">
+            {p.compareAt>p.price && <span className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">Promo -{Math.round((1-p.price/p.compareAt)*100)}%</span>}
+            <img src={p.image} alt={p.name} className="w-full h-44 md:h-48 object-cover transition-transform duration-300 group-hover:scale-[1.02]"/>
+            <div className="p-4">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="font-semibold leading-tight">{p.name}</h3>
+                <span className="chip text-zinc-600">{p.category}</span>
+              </div>
+              <p className="text-sm text-zinc-600 mt-1">{p.desc}</p>
+              <div className="mt-3 flex items-end gap-2">
+                {p.compareAt>p.price && <span className="line-through text-sm text-zinc-400">{currency(p.compareAt)}</span>}
+                <span className="font-extrabold text-xl" style={{color:'var(--accent)'}}>{currency(p.price)}</span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {p.tags?.slice(0,3).map(t=> <span key={t} className="chip text-zinc-600">{t}</span>)}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function FeedbackForm({onSubmit}){
+        const [f,setF] = useState({nome:'', contacto:'', mensagem:'', produtoDesejado:''});
+        return (
+          <div className="mt-4 grid md:grid-cols-2 gap-4">
+            <label className="block"><div className="text-sm text-zinc-600">Seu nome</div><input className="w-full border px-3 py-2 rounded-xl" value={f.nome} onChange={e=>setF({...f,nome:e.target.value})}/></label>
+            <label className="block"><div className="text-sm text-zinc-600">Contacto (WhatsApp/Email)</div><input className="w-full border px-3 py-2 rounded-xl" value={f.contacto} onChange={e=>setF({...f,contacto:e.target.value})}/></label>
+            <label className="block md:col-span-2"><div className="text-sm text-zinc-600">Produto que precisa (se não tiver na loja)</div><input className="w-full border px-3 py-2 rounded-xl" value={f.produtoDesejado} onChange={e=>setF({...f,produtoDesejado:e.target.value})}/></label>
+            <label className="block md:col-span-2"><div className="text-sm text-zinc-600">Opinião / Mensagem</div><textarea className="w-full border px-3 py-2 rounded-xl" rows="3" value={f.mensagem} onChange={e=>setF({...f,mensagem:e.target.value})}></textarea></label>
+            <div className="md:col-span-2">
+              <button className="btn btn-accent" onClick={()=>{ if(!f.nome || !f.contacto) return alert('Preencha nome e contacto'); onSubmit(f); setF({nome:'',contacto:'',mensagem:'',produtoDesejado:''}); alert('Obrigado! Recebemos seu pedido/opinião.'); }}>Enviar</button>
+            </div>
+          </div>
+        );
+      }
+
+      function Labeled({label,children}){
+        return <label className="block mb-2"><div className="text-sm text-zinc-600">{label}</div>{children}</label>
+      }
+
+      function AdminModal({onClose, user, config, setConfig, products, setProducts, upsertProduct, delProduct, feedbacks, addManager, delManager}){
+        const [tab,setTab]=useState('produtos');
+        const [edit,setEdit]=useState(null);
+
+        return (
+          <div className="fixed inset-0 bg-black/40 grid place-items-center p-4 z-50" role="dialog" aria-modal="true">
+            <div className="bg-white dark:bg-zinc-900 w-full max-w-5xl rounded-3xl p-6 overflow-auto max-h-[92vh]">
+              <div className="flex items-center gap-2">
+                <h2 className="font-bold text-lg">Administração</h2>
+                <span className="chip">Logado: {user?.nome || '—'}</span>
+                <div className="ml-auto flex gap-2">
+                  <button className={`btn ${tab==='produtos'?'btn-accent':''}`} onClick={()=>setTab('produtos')}>Produtos</button>
+                  <button className={`btn ${tab==='feedback'?'btn-accent':''}`} onClick={()=>setTab('feedback')}>Opiniões</button>
+                  <button className={`btn ${tab==='aparencia'?'btn-accent':''}`} onClick={()=>setTab('aparencia')}>Aparência</button>
+                  <button className={`btn ${tab==='gestores'?'btn-accent':''}`} onClick={()=>setTab('gestores')}>Gestores</button>
+                </div>
+              </div>
+
+              {tab==='produtos' && (
+                <div className="grid md:grid-cols-2 gap-6 mt-4">
+                  <div className="card p-4">
+                    <h3 className="font-semibold mb-2">{edit? 'Editar produto' : 'Novo produto'}</h3>
+                    <AdminProductForm key={edit? edit.id : 'novo'} initial={edit||{}} onSave={(p)=>{upsertProduct(p); setEdit(null);}}/>
+                  </div>
+                  <div className="card p-0 overflow-hidden">
+                    <div className="p-4 border-b font-semibold">Lista de produtos ({products.length})</div>
+                    <div className="divide-y max-h-[50vh] overflow-auto">
+                      {products.map(p=> (
+                        <div key={p.id} className="px-4 py-3 flex items-center gap-3">
+                          <img src={p.image} className="h-10 w-10 rounded object-cover"/>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium truncate">{p.name}</div>
+                            <div className="text-sm text-zinc-600">{p.category} • {currency(p.price)}</div>
+                          </div>
+                          <button className="btn" onClick={()=>setEdit(p)}>✏️</button>
+                          <button className="btn text-red-600" onClick={()=>{ if(confirm('Apagar este produto?')) delProduct(p.id); }}>🗑️</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {tab==='feedback' && (
+                <div className="mt-4 card p-4">
+                  <h3 className="font-semibold">Mensagens recebidas ({feedbacks.length})</h3>
+                  <div className="mt-2 grid gap-3 max-h-[60vh] overflow-auto">
+                    {feedbacks.map(f=> (
+                      <div key={f.id} className="border rounded-2xl p-3">
+                        <div className="text-sm text-zinc-500">{new Date(f.date).toLocaleString()}</div>
+                        <div className="font-medium">{f.nome} • {f.contacto}</div>
+                        {f.produtoDesejado && <div className="text-sm"><span className="font-semibold">Quer:</span> {f.produtoDesejado}</div>}
+                        {f.mensagem && <div className="text-sm text-zinc-700 mt-1">{f.mensagem}</div>}
+                      </div>
+                    ))}
+                    {feedbacks.length===0 && <div className="text-zinc-500">Sem mensagens por enquanto.</div>}
+                  </div>
+                </div>
+              )}
+
+              {tab==='aparencia' && (
+                <div className="grid md:grid-cols-2 gap-6 mt-4">
+                  <div className="card p-4">
+                    <h3 className="font-semibold mb-2">Marca & Tema</h3>
+                    <Labeled label="Nome do negócio"><input className="w-full border px-3 py-2 rounded-xl" value={config.BUSINESS_NAME} onChange={e=>setConfig({...config,BUSINESS_NAME:e.target.value})}/></Labeled>
+                    <Labeled label="Frase de boas-vindas (Hero)"><input className="w-full border px-3 py-2 rounded-xl" value={config.WELCOME} onChange={e=>setConfig({...config,WELCOME:e.target.value})}/></Labeled>
+                    <Labeled label="Logo (URL)"><input className="w-full border px-3 py-2 rounded-xl" value={config.LOGO||''} onChange={e=>setConfig({...config,LOGO:e.target.value})}/></Labeled>
+                    <Labeled label="Cor principal do site"><input type="color" value={config.THEME_COLOR} onChange={e=>setConfig({...config,THEME_COLOR:e.target.value})}/></Labeled>
+                    <Labeled label="Modo do site">
+                      <select className="w-full border px-3 py-2 rounded-xl" value={config.THEME_MODE} onChange={e=>setConfig({...config,THEME_MODE:e.target.value})}>
+                        <option value="light">Claro</option>
+                        <option value="dark">Escuro</option>
+                      </select>
+                    </Labeled>
+                  </div>
+                  <div className="card p-4">
+                    <h3 className="font-semibold mb-2">Segurança & Contactos</h3>
+                    <Labeled label="PIN MASTER (Administrador)"><input className="w-full border px-3 py-2 rounded-xl" value={config.ADMIN_PIN} onChange={e=>setConfig({...config,ADMIN_PIN:e.target.value})}/></Labeled>
+                    <Labeled label="WhatsApp"><input className="w-full border px-3 py-2 rounded-xl" value={config.WHATSAPP_NUMBER} onChange={e=>setConfig({...config,WHATSAPP_NUMBER:e.target.value})}/></Labeled>
+                    <Labeled label="Email de suporte"><input className="w-full border px-3 py-2 rounded-xl" value={config.SUPPORT_EMAIL} onChange={e=>setConfig({...config,SUPPORT_EMAIL:e.target.value})}/></Labeled>
+                  </div>
+                </div>
+              )}
+
+              {tab==='gestores' && (
+                <div className="grid md:grid-cols-2 gap-6 mt-4">
+                  <div className="card p-4">
+                    <h3 className="font-semibold mb-2">Adicionar gestor</h3>
+                    <AdminManagerForm onSave={(m)=>{ addManager(m); alert('Gestor adicionado!'); }}/>
+                  </div>
+                  <div className="card p-0 overflow-hidden">
+                    <div className="p-4 border-b font-semibold">Equipa ({config.MANAGERS.length})</div>
+                    <div className="max-h-[50vh] overflow-auto divide-y">
+                      {config.MANAGERS.map(m=> (
+                        <div key={m.id} className="px-4 py-3 flex items-center gap-3">
+                          <div className="flex-1">
+                            <div className="font-medium">{m.nome} <span className="text-xs chip ml-2">{m.role||'gestor'}</span></div>
+                            <div className="text-sm text-zinc-600">{m.telefone}</div>
+                            <div className="text-xs text-zinc-500">PIN: {m.pin}</div>
+                          </div>
+                          <button className="btn text-red-600" onClick={()=>{ if(confirm('Remover este gestor?')) delManager(m.id); }}>🗑️</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6 flex justify-end">
+                <button className="btn" onClick={onClose}>Fechar</button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      function AdminProductForm({initial, onSave}){
+        const [p,setP] = useState({
+          id: initial.id || '',
+          name: initial.name || '',
+          price: initial.price || 0,
+          compareAt: initial.compareAt || 0,
+          category: initial.category || 'Geral',
+          stock: initial.stock ?? 0,
+          desc: initial.desc || '',
+          image: initial.image || '',
+          tags: initial.tags || []
+        });
+        const [tagInput, setTagInput] = useState('');
+
+        const addTag = ()=>{ if(tagInput && !p.tags.includes(tagInput)) setP({...p, tags:[...p.tags, tagInput]}); setTagInput(''); };
+        const removeTag = (t)=> setP({...p, tags:p.tags.filter(x=>x!==t)});
+
+        return (
+          <div className="space-y-3">
+            <Labeled label="ID"><input className="w-full border px-3 py-2 rounded-xl" value={p.id} onChange={e=>setP({...p,id:e.target.value})}/></Labeled>
+            <Labeled label="Nome"><input className="w-full border px-3 py-2 rounded-xl" value={p.name} onChange={e=>setP({...p,name:e.target.value})}/></Labeled>
+            <div className="grid grid-cols-2 gap-3">
+              <Labeled label="Preço (Kz)"><input type="number" className="w-full border px-3 py-2 rounded-xl" value={p.price} onChange={e=>setP({...p,price:+e.target.value})}/></Labeled>
+              <Labeled label="Preço antigo (promo)"><input type="number" className="w-full border px-3 py-2 rounded-xl" value={p.compareAt} onChange={e=>setP({...p,compareAt:+e.target.value})}/></Labeled>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Labeled label="Categoria"><input className="w-full border px-3 py-2 rounded-xl" value={p.category} onChange={e=>setP({...p,category:e.target.value})} placeholder="Ex: Telefones, Serviços, Informática"/></Labeled>
+              <Labeled label="Stock"><input type="number" className="w-full border px-3 py-2 rounded-xl" value={p.stock} onChange={e=>setP({...p,stock:+e.target.value})}/></Labeled>
+            </div>
+            <Labeled label="Descrição"><input className="w-full border px-3 py-2 rounded-xl" value={p.desc} onChange={e=>setP({...p,desc:e.target.value})}/></Labeled>
+            <Labeled label="Imagem (URL)"><input className="w-full border px-3 py-2 rounded-xl" value={p.image} onChange={e=>setP({...p,image:e.target.value})}/></Labeled>
+            <div>
+              <div className="text-sm text-zinc-600 mb-1">Tags</div>
+              <div className="flex gap-2">
+                <input className="flex-1 border px-3 py-2 rounded-xl" value={tagInput} onChange={e=>setTagInput(e.target.value)} placeholder="Ex: 4G, Garantia"/>
+                <button className="btn" onClick={addTag}>Adicionar</button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {p.tags.map(t=> <span key={t} className="chip">{t} <button className="text-red-500" onClick={()=>removeTag(t)}>×</button></span>)}
+              </div>
+            </div>
+            <button className="btn btn-accent" onClick={()=>{
+              if(!p.id || !p.name) return alert('Preencha pelo menos ID e Nome');
+              onSave(p);
+              alert('Produto salvo!');
+            }}>Salvar</button>
+          </div>
+        );
+      }
+
+      function AdminManagerForm({onSave}){
+        const [m,setM]=useState({nome:'', telefone:'', pin:'', role:'gestor'});
+        return (
+          <div className="space-y-3">
+            <Labeled label="Nome"><input className="w-full border px-3 py-2 rounded-xl" value={m.nome} onChange={e=>setM({...m,nome:e.target.value})}/></Labeled>
+            <Labeled label="Telefone"><input className="w-full border px-3 py-2 rounded-xl" value={m.telefone} onChange={e=>setM({...m,telefone:e.target.value})}/></Labeled>
+            <Labeled label="PIN de acesso"><input className="w-full border px-3 py-2 rounded-xl" value={m.pin} onChange={e=>setM({...m,pin:e.target.value})}/></Labeled>
+            <Labeled label="Perfil">
+              <select className="w-full border px-3 py-2 rounded-xl" value={m.role} onChange={e=>setM({...m,role:e.target.value})}>
+                <option value="gestor">Gestor</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </Labeled>
+            <button className="btn btn-accent" onClick={()=>{ if(!m.nome || !m.pin) return alert('Defina nome e PIN'); onSave(m); setM({nome:'',telefone:'',pin:'',role:'gestor'}); }}>Adicionar</button>
+          </div>
+        )
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+    </script>
+  </body>
+</html>
